@@ -590,6 +590,39 @@ class Bling extends Component {
         return slotSize;
     }
 
+    addMoatYieldReadyFunc(adSlot) {
+        console.log("adding moat yield ready");
+        window.top.moatYieldReady = function () {
+            console.log("moat yeild ready!", adSlot);
+            // Run moat call here
+            this.callMoatPrebidAnalytics(adSlot);
+        };
+    }
+
+    callMoatPrebidAnalytics(adSlot) {
+        if (
+            window.top.moatPrebidApi &&
+            typeof window.top.moatPrebidApi.enableLogging === "function"
+        ) {
+            window.top.moatPrebidApi.enableLogging();
+            console.log("moat prebid api logging enabled");
+        }
+        if (
+            window.top.moatPrebidApi &&
+            typeof window.top.moatPrebidApi.slotDataAvailable === "function" &&
+            window.top.moatPrebidApi.slotDataAvailable()
+        ) {
+            console.log("set moat targeting for slot", adSlot);
+            window.top.moatPrebidApi.setMoatTargetingForSlot(adSlot);
+            // this.display();
+        } else {
+            console.log(
+                "// Moat tag hasn’t fully rendered yet, or slot data is not available for this URL."
+            );
+            // this.display();
+        }
+    }
+
     renderAd() {
         this.defineSlot();
         this.display();
@@ -689,10 +722,56 @@ class Bling extends Component {
         } else {
             adSlot.addService(Bling._adManager.googletag.pubads());
         }
+
+        // CALL MOAT AFTER SLOT HAS BEEN DEFINED
+        // if (typeof window.top.moatYieldReady !== "function" && this.props.abgroup === 20) {
+        if (typeof window.top.moatYieldReady !== "function") {
+            // add moat yeild then call moat
+            this.addMoatYieldReadyFunc(adSlot);
+        } else {
+            console.log("moat yield ready already defined");
+            // immediately run moat call
+            this.callMoatPrebidAnalytics(adSlot);
+        }
+    }
+
+    floorPrice(day, floorConf) {
+        if (!floorConf.floor) {
+            return 0.25;
+        }
+        // Sunday
+        if (day === 0) {
+            return floorConf.floor.sunday || floorConf.floor;
+        }
+        // Monday
+        if (day === 1) {
+            return floorConf.floor.monday || floorConf.floor;
+        }
+        // Tuesday
+        if (day === 2) {
+            return floorConf.floor.tuesday || floorConf.floor;
+        }
+        // Wednesday
+        if (day === 3) {
+            return floorConf.floor.wednesday || floorConf.floor;
+        }
+        // Thursday
+        if (day === 4) {
+            return floorConf.floor.thursday || floorConf.floor;
+        }
+        // Friday
+        if (day === 5) {
+            return floorConf.floor.friday || floorConf.floor;
+        }
+        // Saturday
+        if (day === 6) {
+            return floorConf.floor.saturday || floorConf.floor;
+        }
+        return 0.25;
     }
 
     display() {
-        const { content } = this.props;
+        const { content, adUnitPath, outOfPage } = this.props;
         const divId = this._divId;
         const adSlot = this._adSlot;
 
@@ -705,7 +784,97 @@ class Bling extends Component {
             ) {
                 Bling._adManager.updateCorrelator();
             }
-            Bling._adManager.googletag.display(divId);
+            // PBJS configs
+            const prebidConf = this.props.prebidConf;
+
+            if (prebidConf) {
+                const PREBID_TIMEOUT = prebidConf.timeout;
+                const priceBucket = prebidConf.priceBuckets;
+                const floorConf = prebidConf.floorPrices;
+                const prebidAnalytics = prebidConf.analytics;
+                const pbjs = window.pbjs || {};
+                pbjs.que = pbjs.que || [];
+                const slotSize = this.getSlotSize(prebidConf.useSecondaryAdSizeForPrebid);
+
+                // Set config
+                pbjs.setConfig({
+                    consentManagement: {
+                        cmpApi: "iab",
+                        timeout: 8000,
+                        allowAuctionWithoutConsent: false
+                    },
+                    priceGranularity: priceBucket
+                });
+
+                // analytics
+                if (prebidAnalytics && prebidAnalytics.rubicon) {
+                    pbjs.enableAnalytics({
+                        provider: "rubicon",
+                        options: {
+                            accountId: prebidAnalytics.rubicon,
+                            endpoint: "https://prebid-a.rubiconproject.com/event"
+                        }
+                    });
+                }
+
+                const floor = this.floorPrice(new Date().getDay(), floorConf);
+
+                // Pause ad
+                Bling._adManager.googletag.pubads().disableInitialLoad();
+
+                // Define pbjs unit
+                const adUnits = [
+                    {
+                        code: divId,
+                        sizes: slotSize,
+                        bids: (adUnitPath.indexOf("oop") === -1) ? prebidConf.bidParams : prebidConf.oopBidParams
+                    }
+                ];
+
+                pbjs.que.push(() => {
+                    pbjs.addAdUnits(adUnits);
+                    pbjs.requestBids({
+                        bidsBackHandler: sendAdserverRequest
+                    });
+                    pbjs.removeAdUnit(divId);
+                });
+
+                const sendAdserverRequest = () => {
+                    if (pbjs.adserverRequestSent) {
+                        return;
+                    }
+
+                    pbjs.adserverRequestSent = true;
+                    console.log("pre ad call");
+                    Bling._adManager.googletag.cmd.push(() => {
+                        pbjs.que.push(() => {
+                            if (pbjs.getHighestCpmBids(divId).length) {
+                                console.log("prebid has bids and will auction");
+                                let highestBid = pbjs.getHighestCpmBids(divId)[0].cpm;
+                                highestBid = parseFloat(highestBid);
+                                if (highestBid >= floor) {
+                                    pbjs.setTargetingForGPTAsync([divId]);
+                                } else {
+                                    pbjs.setTargetingForGPTAsync([divId]);
+                                    const hbpbValue = adSlot.getTargeting("hb_pb");
+                                    adSlot.setTargeting("hb_pb", `${hbpbValue}x`);
+                                }
+                            }
+                            console.log("post ad call should be displaying", divId);
+                            Bling._adManager.googletag.display(divId);
+                            pbjs.adserverRequestSent = false;
+                            adSlot.clearTargeting();
+                        });
+                    });
+                };
+
+                setTimeout(() => {
+                    sendAdserverRequest();
+                }, PREBID_TIMEOUT);
+            } else {
+                Bling._adManager.googletag.display(divId);
+            }
+
             if (
                 Bling._adManager._disableInitialLoad &&
                 !Bling._adManager._initialRender
@@ -785,8 +954,7 @@ class Bling extends Component {
 export default hoistStatics(
     Bling,
     pubadsAPI.reduce((api, method) => {
-        api[method] = (...args) =>
-            Bling._adManager.pubadsProxy({ method, args });
+        api[method] = (...args) => Bling._adManager.pubadsProxy({ method, args });
         return api;
     }, {})
 );
