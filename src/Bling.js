@@ -610,7 +610,6 @@ class Bling extends Component {
         if (
             window.top.moatPrebidApi &&
             typeof window.top.moatPrebidApi.slotDataAvailable === "function" && 
-            adSlot.O.indexOf('oop') === -1 &&
             window.top.moatPrebidApi.slotDataAvailable()
         ) {
             console.log("set moat targeting for slot", adSlot);

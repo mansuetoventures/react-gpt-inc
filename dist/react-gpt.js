@@ -607,7 +607,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	                window.top.moatPrebidApi.enableLogging();
 	                console.log("moat prebid api logging enabled");
 	            }
-	            if (window.top.moatPrebidApi && typeof window.top.moatPrebidApi.slotDataAvailable === "function" && adSlot.O.indexOf('oop') === -1 && window.top.moatPrebidApi.slotDataAvailable()) {
+	            if (window.top.moatPrebidApi && typeof window.top.moatPrebidApi.slotDataAvailable === "function" && window.top.moatPrebidApi.slotDataAvailable()) {
 	                console.log("set moat targeting for slot", adSlot);
 	                window.top.moatPrebidApi.setMoatTargetingForSlot(adSlot);
 	                // this.display();
