@@ -604,13 +604,14 @@ class Bling extends Component {
         const { adUnitPath, outOfPage } = this.props;
         const divId = this._divId;
         const slotSize = this.getSlotSize();
-
+        console.log('defineSlot adUnitPath:', adUnitPath, 'outOfPage:', outOfPage, 'divId:', divId, 'slotSize', slotSize)
         if (!this._adSlot) {
             if (outOfPage) {
                 this._adSlot = Bling._adManager.googletag.defineOutOfPageSlot(
                     adUnitPath,
                     divId
                 );
+                console.log('out of page slot defined', this._adSlot);
             } else {
                 this._adSlot = Bling._adManager.googletag.defineSlot(
                     adUnitPath,
@@ -637,9 +638,12 @@ class Bling extends Component {
             forceSafeFrame
         } = props;
 
+        console.log('configureSlot', this.props)
+
         this.defineSizeMapping(adSlot, sizeMapping);
 
         if (collapseEmptyDiv !== undefined) {
+            console.log('going to collapse an empty div (sizeMapping:)', sizeMapping, 'adSlot', adSlot)
             if (Array.isArray(collapseEmptyDiv)) {
                 adSlot.setCollapseEmptyDiv.call(adSlot, ...collapseEmptyDiv);
             } else {
